@@ -202,38 +202,23 @@ jobs:
           
       - name: Create GitHub Release
         if: steps.check_release.outputs.exists == 'false'
-        id: create_release
-        uses: actions/create-release@v1
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          RELEASE_NOTES_FILE="${{ steps.release_notes.outputs.release_notes_file }}"
+
+          echo "🎉 创建 Release: DooPushSDK v$VERSION"
+
+          # 使用 GitHub CLI 创建 release 并上传文件
+          gh release create "v$VERSION" \
+            --title "DooPushSDK v$VERSION" \
+            --notes-file "$RELEASE_NOTES_FILE" \
+            --draft=false \
+            --prerelease=false \
+            "output/${{ env.FRAMEWORK_NAME }}.framework.zip" \
+            "DooPushSDK.podspec"
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          release_name: DooPushSDK v${{ steps.version.outputs.version }}
-          body_path: ${{ steps.release_notes.outputs.release_notes_file }}
-          draft: false
-          prerelease: false
-          
-      - name: Upload Framework to Release
-        if: steps.check_release.outputs.exists == 'false'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: output/${{ env.FRAMEWORK_NAME }}.framework.zip
-          asset_name: ${{ env.FRAMEWORK_NAME }}.framework.zip
-          asset_content_type: application/zip
-          
-      - name: Upload podspec to Release
-        if: steps.check_release.outputs.exists == 'false'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: DooPushSDK.podspec
-          asset_name: DooPushSDK.podspec
-          asset_content_type: text/plain
           
       - name: Update CocoaPods Spec (Optional)
         if: steps.check_release.outputs.exists == 'false' && vars.ENABLE_COCOAPODS_PUBLISH == 'true'
