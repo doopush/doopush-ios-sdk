@@ -1,0 +1,251 @@
+name: Auto Build and Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # 允许手动触发
+
+env:
+  FRAMEWORK_NAME: DooPushSDK
+
+jobs:
+  build-and-release:
+    runs-on: macos-14  # 使用 macOS 14 (支持 Xcode 16)
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史记录用于版本检测
+          
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+          
+      - name: Cache Xcode DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-deriveddata-${{ hashFiles('Package.swift', 'DooPushSDK.podspec', 'Sources/**/*.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-deriveddata-
+            
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            build
+            output
+          key: ${{ runner.os }}-build-${{ hashFiles('Package.swift', 'DooPushSDK.podspec', 'Sources/**/*.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-build-
+            
+      - name: Extract version from podspec
+        id: version
+        run: |
+          if [ -f "DooPushSDK.podspec" ]; then
+            VERSION=$(grep -o "s.version.*=.*['\"][^'\"]*['\"]" DooPushSDK.podspec | grep -o "[0-9][^'\"]*")
+            echo "版本: $VERSION"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "❌ 找不到 DooPushSDK.podspec 文件"
+            exit 1
+          fi
+          
+      - name: Check if release exists
+        id: check_release
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "⚠️ 版本 v$VERSION 的 Release 已存在"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "✅ 版本 v$VERSION 是新版本，将创建 Release"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Build Framework
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          echo "🚀 开始构建 Framework..."
+          
+          # 确保脚本有执行权限
+          if [ -f "scripts/build.sh" ]; then
+            chmod +x scripts/build.sh
+            echo "✅ 找到构建脚本"
+          else
+            echo "❌ 找不到构建脚本 scripts/build.sh"
+            exit 1
+          fi
+          
+          # 运行构建脚本并捕获输出
+          if ./scripts/build.sh; then
+            echo "✅ Framework 构建成功"
+          else
+            echo "❌ Framework 构建失败"
+            exit 1
+          fi
+          
+      - name: Verify Framework
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          FRAMEWORK_PATH="output/${FRAMEWORK_NAME}.framework"
+          if [ -d "$FRAMEWORK_PATH" ]; then
+            echo "✅ Framework 构建成功"
+            echo "📊 Framework 信息:"
+            ls -la "$FRAMEWORK_PATH"
+            
+            if [ -f "$FRAMEWORK_PATH/$FRAMEWORK_NAME" ]; then
+              echo "📋 支持架构:"
+              lipo -info "$FRAMEWORK_PATH/$FRAMEWORK_NAME" || echo "单一架构"
+            fi
+          else
+            echo "❌ Framework 构建失败"
+            exit 1
+          fi
+          
+      - name: Create Framework ZIP
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          cd output
+          zip -r "${FRAMEWORK_NAME}.framework.zip" "${FRAMEWORK_NAME}.framework"
+          echo "✅ 创建 ZIP 包: ${FRAMEWORK_NAME}.framework.zip"
+          
+      - name: Generate Release Notes
+        if: steps.check_release.outputs.exists == 'false'
+        id: release_notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # 获取最近的提交记录
+          if git tag | grep -q "v"; then
+            LAST_TAG=$(git tag | grep "^v" | sort -V | tail -1)
+            COMMITS=$(git log --oneline --no-merges "${LAST_TAG}..HEAD" | head -10)
+          else
+            COMMITS=$(git log --oneline --no-merges | head -10)
+          fi
+          
+          # 生成发布说明
+          cat > release_notes.md << EOF
+          ## DooPushSDK v${VERSION}
+          
+          ### 📱 Framework 信息
+          - **最低支持**: iOS 12.0+
+          - **Xcode 版本**: 16.0+
+          - **Swift 版本**: 5.9+
+          
+          ### 📦 集成方式
+          
+          #### Framework 集成
+          1. 下载 \`DooPushSDK.framework.zip\`
+          2. 解压并拖拽到 Xcode 项目中
+          3. 设置为 "Embed & Sign"
+          
+          #### Swift Package Manager
+          \`\`\`swift
+          dependencies: [
+              .package(url: "https://github.com/doopush/doopush-ios-sdk.git", from: "${VERSION}")
+          ]
+          \`\`\`
+          
+          #### CocoaPods
+          \`\`\`ruby
+          pod 'DooPushSDK', '~> ${VERSION}'
+          \`\`\`
+          
+          ### 📝 更新内容
+          EOF
+          
+          if [ -n "$COMMITS" ]; then
+            echo "" >> release_notes.md
+            echo "$COMMITS" | sed 's/^/- /' >> release_notes.md
+          else
+            echo "- 初始版本发布" >> release_notes.md
+          fi
+          
+          cat >> release_notes.md << EOF
+          
+          ### 🔗 相关链接
+          - [文档](https://docs.doopush.com)
+          - [集成指南](https://docs.doopush.com/sdk/ios-integration)
+          - [示例项目](https://github.com/doopush/doopush-ios-sdk/tree/main/DooPushSDKExample)
+          
+          ---
+          
+          **完整变更日志**: https://github.com/doopush/doopush-ios-sdk/compare/${LAST_TAG:-v0.0.0}...v${VERSION}
+          EOF
+          
+          echo "release_notes_file=release_notes.md" >> $GITHUB_OUTPUT
+          
+      - name: Create GitHub Release
+        if: steps.check_release.outputs.exists == 'false'
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          release_name: DooPushSDK v${{ steps.version.outputs.version }}
+          body_path: ${{ steps.release_notes.outputs.release_notes_file }}
+          draft: false
+          prerelease: false
+          
+      - name: Upload Framework to Release
+        if: steps.check_release.outputs.exists == 'false'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: output/${{ env.FRAMEWORK_NAME }}.framework.zip
+          asset_name: ${{ env.FRAMEWORK_NAME }}.framework.zip
+          asset_content_type: application/zip
+          
+      - name: Upload podspec to Release
+        if: steps.check_release.outputs.exists == 'false'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: DooPushSDK.podspec
+          asset_name: DooPushSDK.podspec
+          asset_content_type: text/plain
+          
+      - name: Update CocoaPods Spec (Optional)
+        if: steps.check_release.outputs.exists == 'false' && vars.ENABLE_COCOAPODS_PUBLISH == 'true'
+        run: |
+          # 这部分是可选的，需要配置 CocoaPods Trunk 权限
+          echo "⚠️ CocoaPods 发布已跳过（需要手动配置 trunk 权限）"
+          # pod trunk push DooPushSDK.podspec --allow-warnings
+          
+      - name: Create GitHub Tag
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "DooPush Bot"
+          git config user.email "bot@doopush.com"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          
+      - name: Summary
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "🎉 DooPushSDK v$VERSION 发布成功!"
+          echo "📦 Release URL: https://github.com/doopush/doopush-ios-sdk/releases/tag/v$VERSION"
+          echo "📱 Framework: DooPushSDK.framework.zip"
+          echo "📄 Podspec: DooPushSDK.podspec"
+          
+      - name: Skip message
+        if: steps.check_release.outputs.exists == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "⏭️ 跳过构建: v$VERSION 版本已存在"
+          echo "💡 如需重新发布，请："
+          echo "   1. 更新版本号在 DooPushSDK.podspec"
+          echo "   2. 或删除现有的 Release 和 Tag"
