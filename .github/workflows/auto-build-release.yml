@@ -45,12 +45,31 @@ jobs:
       - name: Extract version from podspec
         id: version
         run: |
+          echo "🔍 开始提取版本号..."
+
           if [ -f "DooPushSDK.podspec" ]; then
-            VERSION=$(grep -o "s.version.*=.*['\"][^'\"]*['\"]" DooPushSDK.podspec | grep -o "[0-9][^'\"]*")
-            echo "版本: $VERSION"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "✅ 找到 DooPushSDK.podspec 文件"
+
+            # 显示版本相关行用于调试
+            echo "📋 podspec 版本行:"
+            grep -n "spec.version" DooPushSDK.podspec || echo "未找到 spec.version 行"
+
+            # 提取版本号（支持单引号和双引号）
+            VERSION=$(grep -E "spec\.version\s*=\s*['\"][^'\"]+['\"]" DooPushSDK.podspec | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -1)
+
+            if [ ! -z "$VERSION" ]; then
+              echo "✅ 检测到版本: $VERSION"
+              echo "version=$VERSION" >> $GITHUB_OUTPUT
+            else
+              echo "❌ 未能提取版本号"
+              echo "📋 podspec 文件内容预览:"
+              head -10 DooPushSDK.podspec
+              exit 1
+            fi
           else
             echo "❌ 找不到 DooPushSDK.podspec 文件"
+            echo "📁 当前目录内容:"
+            ls -la
             exit 1
           fi
           
