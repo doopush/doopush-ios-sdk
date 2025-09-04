@@ -12,6 +12,10 @@ env:
 jobs:
   build-and-release:
     runs-on: macos-14  # 使用 macOS 14 (支持 Xcode 16)
+    permissions:
+      contents: write  # 允许创建标签和发布
+      packages: write
+      id-token: write
     
     steps:
       - name: Checkout code
@@ -200,6 +204,17 @@ jobs:
           
           echo "release_notes_file=release_notes.md" >> $GITHUB_OUTPUT
           
+      - name: Create Git Tag
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "🏷️ 创建 Git 标签: v$VERSION"
+          git config user.name "DooPush Bot"
+          git config user.email "bot@doopush.com"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          echo "✅ Git 标签创建成功"
+
       - name: Create GitHub Release
         if: steps.check_release.outputs.exists == 'false'
         run: |
@@ -207,6 +222,9 @@ jobs:
           RELEASE_NOTES_FILE="${{ steps.release_notes.outputs.release_notes_file }}"
 
           echo "🎉 创建 Release: DooPushSDK v$VERSION"
+
+          # 等待一秒确保标签已同步
+          sleep 2
 
           # 使用 GitHub CLI 创建 release 并上传文件
           gh release create "v$VERSION" \
@@ -226,16 +244,7 @@ jobs:
           # 这部分是可选的，需要配置 CocoaPods Trunk 权限
           echo "⚠️ CocoaPods 发布已跳过（需要手动配置 trunk 权限）"
           # pod trunk push DooPushSDK.podspec --allow-warnings
-          
-      - name: Create GitHub Tag
-        if: steps.check_release.outputs.exists == 'false'
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          git config user.name "DooPush Bot"
-          git config user.email "bot@doopush.com"
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
-          
+
       - name: Summary
         if: steps.check_release.outputs.exists == 'false'
         run: |
