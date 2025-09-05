@@ -180,26 +180,11 @@ jobs:
           pod 'DooPushSDK', '~> ${VERSION}'
           \`\`\`
           
-          ### 📝 更新内容
-          EOF
-          
-          if [ -n "$COMMITS" ]; then
-            echo "" >> release_notes.md
-            echo "$COMMITS" | sed 's/^/- /' >> release_notes.md
-          else
-            echo "- 初始版本发布" >> release_notes.md
-          fi
-          
-          cat >> release_notes.md << EOF
-          
           ### 🔗 相关链接
-          - [文档](https://docs.doopush.com)
-          - [集成指南](https://docs.doopush.com/sdk/ios-integration)
-          - [示例项目](https://github.com/doopush/doopush-ios-sdk/tree/main/DooPushSDKExample)
-          
-          ---
-          
-          **完整变更日志**: https://github.com/doopush/doopush-ios-sdk/compare/${LAST_TAG:-v0.0.0}...v${VERSION}
+          - [文档](https://doopush.com/docs)
+          - [集成指南](https://doopush.com/docs/sdk/ios-integration)
+          - [示例项目 Swift](https://github.com/doopush/doopush/tree/main/sdk/ios/DooPushSDKExample)
+          - [示例项目 Objective-C](https://github.com/doopush/doopush/tree/main/sdk/ios/DooPushSDKExample-ObjC)
           EOF
           
           echo "release_notes_file=release_notes.md" >> $GITHUB_OUTPUT
@@ -238,13 +223,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
-      - name: Update CocoaPods Spec (Optional)
-        if: steps.check_release.outputs.exists == 'false' && vars.ENABLE_COCOAPODS_PUBLISH == 'true'
-        run: |
-          # 这部分是可选的，需要配置 CocoaPods Trunk 权限
-          echo "⚠️ CocoaPods 发布已跳过（需要手动配置 trunk 权限）"
-          # pod trunk push DooPushSDK.podspec --allow-warnings
-
       - name: Summary
         if: steps.check_release.outputs.exists == 'false'
         run: |
@@ -253,12 +231,3 @@ jobs:
           echo "📦 Release URL: https://github.com/doopush/doopush-ios-sdk/releases/tag/v$VERSION"
           echo "📱 Framework: DooPushSDK.framework.zip"
           echo "📄 Podspec: DooPushSDK.podspec"
-          
-      - name: Skip message
-        if: steps.check_release.outputs.exists == 'true'
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          echo "⏭️ 跳过构建: v$VERSION 版本已存在"
-          echo "💡 如需重新发布，请："
-          echo "   1. 更新版本号在 DooPushSDK.podspec"
-          echo "   2. 或删除现有的 Release 和 Tag"
