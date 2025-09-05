@@ -83,16 +83,34 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "⚠️ 版本 v$VERSION 的 Release 已存在"
+            echo "⚠️ 版本 v$VERSION 的 Release 已存在，将删除后重新发布"
           else
             echo "exists=false" >> $GITHUB_OUTPUT
             echo "✅ 版本 v$VERSION 是新版本，将创建 Release"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean up existing release and tag
+        if: steps.check_release.outputs.exists == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "🧹 清理现有版本: v$VERSION"
+
+          # 删除现有的 Release
+          echo "删除 Release..."
+          gh release delete "v$VERSION" --yes || echo "Release 删除失败或不存在"
+
+          # 删除本地和远程标签
+          echo "删除 Git 标签..."
+          git tag -d "v$VERSION" 2>/dev/null || echo "本地标签不存在"
+          git push origin :refs/tags/"v$VERSION" 2>/dev/null || echo "远程标签删除失败或不存在"
+
+          echo "✅ 清理完成，继续发布新版本"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Build Framework
-        if: steps.check_release.outputs.exists == 'false'
         run: |
           echo "🚀 开始构建 Framework..."
           
@@ -114,7 +132,6 @@ jobs:
           fi
           
       - name: Verify Framework
-        if: steps.check_release.outputs.exists == 'false'
         run: |
           FRAMEWORK_PATH="output/${FRAMEWORK_NAME}.framework"
           if [ -d "$FRAMEWORK_PATH" ]; then
@@ -132,14 +149,12 @@ jobs:
           fi
           
       - name: Create Framework ZIP
-        if: steps.check_release.outputs.exists == 'false'
         run: |
           cd output
           zip -r "${FRAMEWORK_NAME}.framework.zip" "${FRAMEWORK_NAME}.framework"
           echo "✅ 创建 ZIP 包: ${FRAMEWORK_NAME}.framework.zip"
           
       - name: Generate Release Notes
-        if: steps.check_release.outputs.exists == 'false'
         id: release_notes
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -190,7 +205,6 @@ jobs:
           echo "release_notes_file=release_notes.md" >> $GITHUB_OUTPUT
           
       - name: Create Git Tag
-        if: steps.check_release.outputs.exists == 'false'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           echo "🏷️ 创建 Git 标签: v$VERSION"
@@ -201,7 +215,6 @@ jobs:
           echo "✅ Git 标签创建成功"
 
       - name: Create GitHub Release
-        if: steps.check_release.outputs.exists == 'false'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           RELEASE_NOTES_FILE="${{ steps.release_notes.outputs.release_notes_file }}"
@@ -224,10 +237,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Summary
-        if: steps.check_release.outputs.exists == 'false'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          echo "🎉 DooPushSDK v$VERSION 发布成功!"
+          if [ "${{ steps.check_release.outputs.exists }}" = "true" ]; then
+            echo "🔄 DooPushSDK v$VERSION 重新发布成功!"
+            echo "📦 删除了旧版本，创建了新版本"
+          else
+            echo "🎉 DooPushSDK v$VERSION 新版本发布成功!"
+          fi
           echo "📦 Release URL: https://github.com/doopush/doopush-ios-sdk/releases/tag/v$VERSION"
           echo "📱 Framework: DooPushSDK.framework.zip"
           echo "📄 Podspec: DooPushSDK.podspec"
