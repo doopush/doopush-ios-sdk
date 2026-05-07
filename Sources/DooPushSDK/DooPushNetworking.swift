@@ -32,7 +32,7 @@ public class DooPushNetworking {
         appId: String,
         token: String,
         deviceInfo: DeviceInfo,
-        completion: @escaping (Result<DeviceRegistrationResponse, DooPushError>) -> Void
+        completion: @escaping (Result<Int, DooPushError>) -> Void
     ) {
         registerDeviceWithRetry(
             appId: appId,
@@ -55,7 +55,7 @@ public class DooPushNetworking {
         token: String,
         deviceInfo: DeviceInfo,
         retryCount: Int,
-        completion: @escaping (Result<DeviceRegistrationResponse, DooPushError>) -> Void
+        completion: @escaping (Result<Int, DooPushError>) -> Void
     ) {
         guard let config = config else {
             completion(.failure(.notConfigured))
@@ -80,11 +80,11 @@ public class DooPushNetworking {
             url: url,
             method: .POST,
             body: requestBody,
-            responseType: DeviceRegistrationResponse.self
+            responseType: DeviceResponseInfo.self
         ) { result in
             switch result {
             case .success(let response):
-                completion(.success(response))
+                completion(.success(response.id))
             case .failure(let error):
                 // 检查是否可以重试
                 if retryCount > 0 && self.shouldRetry(error: error) {
@@ -459,49 +459,6 @@ public struct DeviceResponseInfo: Codable {
     /// 获取设备ID字符串形式（兼容旧版本）
     public var deviceId: String {
         return String(id)
-    }
-}
-
-/// Gateway 配置响应
-public struct GatewayConfigResponse: Codable {
-    public let host: String
-    public let port: Int
-    public let ssl: Bool
-    
-    public init(host: String, port: Int, ssl: Bool) {
-        self.host = host
-        self.port = port
-        self.ssl = ssl
-    }
-}
-
-/// 设备注册响应（包含Gateway配置）
-public struct DeviceRegistrationResponse: Codable {
-    public let device: DeviceResponseInfo
-    public let gateway: GatewayConfigResponse
-    
-    enum CodingKeys: String, CodingKey {
-        case device
-        case gateway
-    }
-    
-    /// 获取设备ID字符串形式（兼容旧版本）
-    public var id: Int {
-        return device.id
-    }
-    
-    /// 获取设备ID字符串形式（兼容旧版本）
-    public var deviceId: String {
-        return device.deviceId
-    }
-    
-    /// 转换为 DooPushGatewayConfig
-    public var gatewayConfig: DooPushGatewayConfig {
-        return DooPushGatewayConfig(
-            host: gateway.host,
-            port: gateway.port,
-            ssl: gateway.ssl
-        )
     }
 }
 
