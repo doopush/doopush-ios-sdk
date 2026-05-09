@@ -188,6 +188,11 @@ let currentBadge = DooPushManager.shared.getCurrentBadgeNumber()
 #### 可选方法
 - `dooPushDidUpdateDeviceInfo(_:)` - 设备信息更新成功
 - `dooPush(_:didChangePermissionStatus:)` - 推送权限状态变更
+- `dooPush(_:didClickNotification:)` - 用户点击通知（v1.2.0+）
+- `dooPush(_:didOpenNotification:)` - 通知导致应用打开（v1.2.0+）
+- `dooPushGatewayDidOpen(_:)` - Gateway WebSocket 已连接（v1.2.0+）
+- `dooPush(_:gatewayDidCloseWithCode:reason:)` - Gateway WebSocket 已关闭（v1.2.0+）
+- `dooPush(_:gatewayDidFailWithError:)` - Gateway WebSocket 连接失败（v1.2.0+）
 
 ## 开发工具
 
@@ -203,14 +208,19 @@ pod spec lint DooPushSDK.podspec --verbose
 ```
 ## 更新日志
 
+### v1.2.0
+- 新增 5 个 `DooPushDelegate` 可选方法：通知点击 / 打开（`didClickNotification` / `didOpenNotification`），以及 Gateway WebSocket 连接 / 关闭 / 失败（`dooPushGatewayDidOpen` / `gatewayDidCloseWithCode:reason:` / `gatewayDidFailWithError:`）。
+- 与 Android SDK v1.2.0 对齐 `updateDeviceInfo` / 角标 / 权限 API（这些 API 已在更早版本可用，此版本主要是跨端统一）。
+- 与 React Native SDK v0.5.0 对齐底座版本。
+
+### v1.1.2
+- **chore**：发版流水线连通性测试（无功能变更）。验证 monorepo `sync-ios-sdk.yml` → `doopush-ios-sdk` 公仓 → `auto-build-release.yml` → GitHub Release 全链路。
+
+### v1.1.1
+- 修复 podspec 与 React Native（CocoaPods 静态库链接 + Swift module）的兼容性：移除自定义 `module_map`、不存在的 LICENSE 文件引用、`public_header_files` 直接暴露 ObjC 头（Swift `@objc` 已自动暴露）
+
 ### v1.1.0
 - 新增 `DooPushNotificationManagementMode`（active/passive）以支持第三方 SDK 共存
 - 新增 `setNotificationManagementMode(_:)` 切换运行模式
 - 新增 `registerDevice(withToken:vendor:completion:)` 用于外部 token（如 expo-notifications）的服务端注册
 - 通知代理增加 KVO 自动重装：被第三方替换后自动恢复并向上转发
-
-### v1.1.1
-- 修复 podspec 与 React Native（CocoaPods 静态库链接 + Swift module）的兼容性：移除自定义 `module_map`、不存在的 LICENSE 文件引用、`public_header_files` 直接暴露 ObjC 头（Swift `@objc` 已自动暴露）
-
-### v1.1.2
-- **chore**：发版流水线连通性测试（无功能变更）。验证 monorepo `sync-ios-sdk.yml` → `doopush-ios-sdk` 公仓 → `auto-build-release.yml` → GitHub Release 全链路。
